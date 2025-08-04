@@ -1,179 +1,188 @@
-// script.js
+let scene = 0;
+const svg = d3.select("#vis");
+const width = +svg.attr("width") - 60;
+const height = +svg.attr("height") - 60;
+const margin = { top: 30, right: 60, bottom: 50, left: 50 }; // wider right margin for right y-axis
 
-let currentScene = 0;
+let homeRunData;
+let pitchVelocityData;
 
-function setup() {
-    d3.select("#next").on("click", () => {
-        currentScene = (currentScene + 1) % 4; // cycle through 0-3
-        drawScene(currentScene);
+(async function () {
+    homeRunData = await d3.csv("data/league_home_runs.csv", d => ({
+        year: +d.yearID,
+        HR: +d.HR
+    }));
+
+    pitchVelocityData = await d3.csv("data/pitch_velocity.csv", d => ({
+        year: +d.yearID,
+        pitchVelocity: +d.pitchVelocity
+    }));
+
+    d3.select("#nextBtn").on("click", () => {
+        if (scene < 3) scene++;
+        drawScene();
     });
 
-    d3.select("#prev").on("click", () => {
-        currentScene = (currentScene - 1 + 4) % 4;
-        drawScene(currentScene);
+    d3.select("#prevBtn").on("click", () => {
+        if (scene > 0) scene--;
+        drawScene();
     });
 
-    drawScene(currentScene);
-}
+    drawScene();
+})();
 
-async function drawScene(scene) {
-    d3.select("#viz").html(""); // Clear visualization
-    d3.select("#description").html(""); // Clear description
+function drawScene() {
+    svg.selectAll("*").remove();
 
     if (scene === 0) {
-        // Scene 0: Total home runs per season since 1950
         d3.select("#description").text("Total home runs per season in Major League Baseball since 1950.");
+    } else if (scene === 1) {
+        d3.select("#description").text("Focusing on the home run boom: 1995 to 2005.");
+    } else if (scene === 2) {
+        d3.select("#description").text("User exploration coming soon: top home run hitters by season.");
+    } else if (scene === 3) {
+        d3.select("#description").text("Comparing MLB home runs with average pitch velocity (1990–2024).");
+    }
 
-        const data = await d3.csv("data/total_hr_per_season.csv", d => ({
-            year: +d.year,
-            HR: +d.home_runs
-        }));
+    const g = svg.append("g")
+        .attr("transform", `translate(${margin.left}, ${margin.top})`);
 
-        const svg = d3.select("#viz").append("svg").attr("width", 700).attr("height", 400);
-        const margin = { top: 40, right: 30, bottom: 50, left: 60 };
-        const width = +svg.attr("width") - margin.left - margin.right;
-        const height = +svg.attr("height") - margin.top - margin.bottom;
-        const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+    if (scene === 0 || scene === 1) {
+        let sceneData = homeRunData;
+        if (scene === 1) {
+            sceneData = homeRunData.filter(d => d.year >= 1995 && d.year <= 2005);
+        }
 
         const x = d3.scaleLinear()
-            .domain(d3.extent(data, d => d.year))
+            .domain(d3.extent(sceneData, d => d.year))
             .range([0, width]);
 
         const y = d3.scaleLinear()
-            .domain([0, d3.max(data, d => d.HR)]).nice()
+            .domain([0, d3.max(sceneData, d => d.HR)]).nice()
             .range([height, 0]);
 
-        const line = d3.line()
-            .x(d => x(d.year))
-            .y(d => y(d.HR))
-            .curve(d3.curveMonotoneX);
-
         g.append("g")
-            .attr("transform", `translate(0,${height})`)
+            .attr("transform", `translate(0, ${height})`)
             .call(d3.axisBottom(x).tickFormat(d3.format("d")));
 
         g.append("g")
             .call(d3.axisLeft(y));
 
+        const line = d3.line()
+            .x(d => x(d.year))
+            .y(d => y(d.HR));
+
         g.append("path")
-            .datum(data)
+            .datum(sceneData)
             .attr("fill", "none")
             .attr("stroke", "steelblue")
             .attr("stroke-width", 2)
             .attr("d", line);
 
-        // Annotation example
-        g.append("text")
-            .attr("x", x(1998))
-            .attr("y", y(5500))
-            .attr("fill", "red")
-            .text("1998 HR Boom");
+        if (scene === 0) {
+            const annotations = [
+                {
+                    note: {
+                        label: "Home run surge begins in the mid-90s",
+                        title: "Rising Power"
+                    },
+                    x: x(1998),
+                    y: y(5500),
+                    dy: -50,
+                    dx: 40
+                }
+            ];
+            const makeAnnotations = d3.annotation().annotations(annotations);
+            g.append("g").call(makeAnnotations);
+        }
 
-    } else if (scene === 1) {
-        // Scene 1: Focus on HR boom (1995-2005)
-        d3.select("#description").text("Focusing on the home run boom: 1995 to 2005.");
+    } else if (scene === 3) {
+        // Dual axis chart for home runs and pitch velocity
 
-        const data = await d3.csv("data/total_hr_per_season.csv", d => ({
-            year: +d.year,
-            HR: +d.home_runs
-        }));
-
-        const filtered = data.filter(d => d.year >= 1995 && d.year <= 2005);
-
-        const svg = d3.select("#viz").append("svg").attr("width", 700).attr("height", 400);
-        const margin = { top: 40, right: 30, bottom: 50, left: 60 };
-        const width = +svg.attr("width") - margin.left - margin.right;
-        const height = +svg.attr("height") - margin.top - margin.bottom;
-        const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
-
+        const years = pitchVelocityData.map(d => d.year);
         const x = d3.scaleLinear()
-            .domain(d3.extent(filtered, d => d.year))
+            .domain(d3.extent(years))
             .range([0, width]);
 
-        const y = d3.scaleLinear()
-            .domain([0, d3.max(filtered, d => d.HR)]).nice()
+        const yLeft = d3.scaleLinear()
+            .domain([0, d3.max(homeRunData.filter(d => d.year >= 1990).map(d => d.HR))]).nice()
             .range([height, 0]);
 
-        const line = d3.line()
-            .x(d => x(d.year))
-            .y(d => y(d.HR))
-            .curve(d3.curveMonotoneX);
+        const yRight = d3.scaleLinear()
+            .domain([
+                d3.min(pitchVelocityData, d => d.pitchVelocity) - 1,
+                d3.max(pitchVelocityData, d => d.pitchVelocity) + 1
+            ])
+            .range([height, 0]);
 
+        // Axes
         g.append("g")
             .attr("transform", `translate(0,${height})`)
             .call(d3.axisBottom(x).tickFormat(d3.format("d")));
 
         g.append("g")
-            .call(d3.axisLeft(y));
+            .call(d3.axisLeft(yLeft))
+            .append("text")
+            .attr("fill", "steelblue")
+            .attr("transform", "rotate(-90)")
+            .attr("y", -40)
+            .attr("dy", "1em")
+            .attr("text-anchor", "end")
+            .text("Home Runs");
+
+        g.append("g")
+            .attr("transform", `translate(${width},0)`)
+            .call(d3.axisRight(yRight))
+            .append("text")
+            .attr("fill", "orange")
+            .attr("transform", "rotate(-90)")
+            .attr("y", 40)
+            .attr("dy", "-1em")
+            .attr("text-anchor", "end")
+            .text("Avg Pitch Velocity (mph)");
+
+        // Lines
+        const lineHR = d3.line()
+            .x(d => x(d.year))
+            .y(d => yLeft(d.HR));
+
+        const linePV = d3.line()
+            .x(d => x(d.year))
+            .y(d => yRight(d.pitchVelocity));
 
         g.append("path")
-            .datum(filtered)
+            .datum(homeRunData.filter(d => d.year >= 1990))
+            .attr("fill", "none")
+            .attr("stroke", "steelblue")
+            .attr("stroke-width", 2)
+            .attr("d", lineHR);
+
+        g.append("path")
+            .datum(pitchVelocityData)
             .attr("fill", "none")
             .attr("stroke", "orange")
-            .attr("stroke-width", 3)
-            .attr("d", line);
+            .attr("stroke-width", 2)
+            .attr("d", linePV);
 
-        g.append("text")
-            .attr("x", x(1998))
-            .attr("y", y(5500))
-            .attr("fill", "red")
-            .text("Peak of HR Boom");
+        // Annotation
+        const annotations = [
+            {
+                note: {
+                    label: "Pitch velocity increase may have contributed to more home runs",
+                    title: "Velocity & Power"
+                },
+                x: x(2015),
+                y: yLeft(6500),
+                dy: -30,
+                dx: 30
+            }
+        ];
+
+        const makeAnnotations = d3.annotation().annotations(annotations);
+        g.append("g").call(makeAnnotations);
 
     } else if (scene === 2) {
-        // Scene 2: Top HR hitter per season (bar chart)
-        d3.select("#description").text("Top home run hitter per MLB season (Wikipedia data).");
-
-        const data = await d3.csv("data/top_hr_leaders_wiki.csv", d => ({
-            year: +d.yearID,
-            player: d.player,
-            HR: +d.HR
-        }));
-
-        const svg = d3.select("#viz").append("svg").attr("width", 900).attr("height", 500);
-        const margin = { top: 40, right: 30, bottom: 100, left: 70 };
-        const width = +svg.attr("width") - margin.left - margin.right;
-        const height = +svg.attr("height") - margin.top - margin.bottom;
-        const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
-
-        // X scale and axis (years)
-        const x = d3.scaleBand()
-            .domain(data.map(d => d.year))
-            .range([0, width])
-            .padding(0.1);
-
-        // Y scale and axis (HR)
-        const y = d3.scaleLinear()
-            .domain([0, d3.max(data, d => d.HR)]).nice()
-            .range([height, 0]);
-
-        g.append("g")
-            .attr("transform", `translate(0,${height})`)
-            .call(d3.axisBottom(x))
-            .selectAll("text")
-            .attr("transform", "rotate(-65)")
-            .style("text-anchor", "end");
-
-        g.append("g")
-            .call(d3.axisLeft(y));
-
-        // Bars
-        g.selectAll(".bar")
-            .data(data)
-            .enter()
-            .append("rect")
-            .attr("class", "bar")
-            .attr("x", d => x(d.year))
-            .attr("y", d => y(d.HR))
-            .attr("width", x.bandwidth())
-            .attr("height", d => height - y(d.HR))
-            .attr("fill", "teal")
-            .append("title")
-            .text(d => `${d.player} (${d.year}): ${d.HR} HRs`);
-
-    } else if (scene === 3) {
-        // Scene 3: Correlation pitch velocity vs HR (scatter plot)
-        d3.select("#description").text("Correlation between average pitch velocity and top home runs by year.");
-
+        // Load both datasets asynchronously
         Promise.all([
             d3.csv("data/pitch_velocity.csv", d => ({
                 year: +d.year,
@@ -185,8 +194,10 @@ async function drawScene(scene) {
                 HR: +d.HR
             }))
         ]).then(([pitchData, hrData]) => {
+            // Join datasets on year
             const hrMap = new Map(hrData.map(d => [d.year, d]));
 
+            // Merge pitch and HR data for years present in both
             const merged = pitchData
                 .filter(d => hrMap.has(d.year))
                 .map(d => ({
@@ -196,12 +207,27 @@ async function drawScene(scene) {
                     HR: hrMap.get(d.year).HR
                 }));
 
-            const svg = d3.select("#viz").append("svg").attr("width", 700).attr("height", 400);
+            // Now build a scatter plot or line chart showing correlation:
+            // x-axis: avgVelocity, y-axis: HR
+            // Optionally add player labels on hover or annotation
+
+            // Clear previous scene contents
+            d3.select("#viz").html("");
+            d3.select("#description").text("Correlation between average pitch velocity and home runs by top MLB hitter per year.");
+
+            // Setup SVG, scales, axes (you can reuse your existing D3 setup)
+            const svg = d3.select("#viz").append("svg")
+                .attr("width", 700)
+                .attr("height", 400);
+
+            // Define margins, width, height
             const margin = { top: 30, right: 30, bottom: 50, left: 60 };
             const width = +svg.attr("width") - margin.left - margin.right;
             const height = +svg.attr("height") - margin.top - margin.bottom;
+
             const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
 
+            // Scales
             const x = d3.scaleLinear()
                 .domain(d3.extent(merged, d => d.avgVelocity)).nice()
                 .range([0, width]);
@@ -210,6 +236,7 @@ async function drawScene(scene) {
                 .domain(d3.extent(merged, d => d.HR)).nice()
                 .range([height, 0]);
 
+            // Axes
             g.append("g")
                 .attr("transform", `translate(0,${height})`)
                 .call(d3.axisBottom(x))
@@ -229,6 +256,7 @@ async function drawScene(scene) {
                 .attr("text-anchor", "middle")
                 .text("Home Runs (Top Player)");
 
+            // Points
             g.selectAll("circle")
                 .data(merged)
                 .enter()
@@ -237,14 +265,11 @@ async function drawScene(scene) {
                 .attr("cy", d => y(d.HR))
                 .attr("r", 5)
                 .attr("fill", "steelblue")
-                .append("title")
+                .append("title")  // tooltip on hover
                 .text(d => `${d.year}: ${d.player} - ${d.HR} HRs, ${d.avgVelocity} mph`);
 
-        }).catch(err => {
-            console.error("Error loading or processing data: ", err);
-            d3.select("#viz").append("p").text("Failed to load data.");
-        });
+            // Optional: Add a regression line or annotations for notable years
+
+        }).catch(err => console.error(err));
     }
 }
-
-setup();
