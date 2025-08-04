@@ -32,20 +32,31 @@ let pitchVelocityData;
 })();
 
 function drawScene() {
+    // Clear previous contents
     svg.selectAll("*").remove();
+    d3.select("#viz").html("");
+
+    // Show/hide containers depending on scene
+    if (scene === 3) {
+        d3.select("#vis").style("display", "none");
+        d3.select("#viz").style("display", "block");
+        d3.select("#search-container").style("display", "block");
+    } else {
+        d3.select("#vis").style("display", "block");
+        d3.select("#viz").style("display", "none");
+        d3.select("#search-container").style("display", "none");
+        d3.select("#yearSearch").property("value", "");
+    }
 
     if (scene === 0) {
         d3.select("#description").text("Total home runs per season in Major League Baseball since 1950.");
     } else if (scene === 1) {
         d3.select("#description").text("Focusing on the home run boom: 1995 to 2005.");
     } else if (scene === 2) {
-        d3.select("#description").text("User exploration coming soon: top home run hitters by season.");
-    } else if (scene === 3) {
         d3.select("#description").text("Comparing MLB home runs with average pitch velocity (1990–2024).");
+    } else if (scene === 3) {
+        d3.select("#description").text("Explore top home run leaders by year.");
     }
-
-    const g = svg.append("g")
-        .attr("transform", `translate(${margin.left}, ${margin.top})`);
 
     if (scene === 0 || scene === 1) {
         let sceneData = homeRunData;
@@ -60,6 +71,9 @@ function drawScene() {
         const y = d3.scaleLinear()
             .domain([0, d3.max(sceneData, d => d.HR)]).nice()
             .range([height, 0]);
+
+        const g = svg.append("g")
+            .attr("transform", `translate(${margin.left}, ${margin.top})`);
 
         g.append("g")
             .attr("transform", `translate(0, ${height})`)
@@ -96,8 +110,9 @@ function drawScene() {
             g.append("g").call(makeAnnotations);
         }
 
-    } else if (scene === 3) {
-        // Dual axis chart for home runs and pitch velocity
+    } else if (scene === 2) {
+        const g = svg.append("g")
+            .attr("transform", `translate(${margin.left}, ${margin.top})`);
 
         const years = pitchVelocityData.map(d => d.year);
         const x = d3.scaleLinear()
@@ -181,8 +196,67 @@ function drawScene() {
         const makeAnnotations = d3.annotation().annotations(annotations);
         g.append("g").call(makeAnnotations);
 
-    } else if (scene === 2) {
-        // Placeholder for future scene 2 exploration
-        d3.select("#description").text("User exploration coming soon: top home run hitters by season.");
+    } else if (scene === 3) {
+        d3.select("#description").text("Explore top home run leaders by year.");
+
+        d3.csv("data/top_hr_leaders_wiki.csv", d => ({
+            year: +d.yearID,
+            player: d.player,
+            HR: +d.HR
+        })).then(data => {
+            data.sort((a, b) => a.year - b.year);
+
+            const container = d3.select("#viz")
+                .style("max-height", "400px")
+                .style("overflow-y", "auto")
+                .style("border", "1px solid #ccc")
+                .style("padding", "10px")
+                .style("font-family", "sans-serif");
+
+            const list = container.append("ul")
+                .style("list-style", "none")
+                .style("padding", 0)
+                .style("margin", 0);
+
+            // Function to render filtered list
+            function renderList(filterYear) {
+                list.selectAll("li").remove();
+
+                let filteredData = data;
+                if (filterYear) {
+                    filteredData = data.filter(d => d.year === filterYear);
+                }
+
+                list.selectAll("li")
+                    .data(filteredData)
+                    .enter()
+                    .append("li")
+                    .style("padding", "5px 0")
+                    .style("border-bottom", "1px solid #eee")
+                    .html(d => `<strong>${d.year}</strong>: ${d.player} — ${d.HR} HRs`);
+
+                if (filteredData.length === 0) {
+                    list.append("li")
+                        .style("padding", "5px 0")
+                        .text("No results for that year.");
+                }
+            }
+
+            renderList();
+
+            // Attach event listener to search input
+            d3.select("#yearSearch").on("input", function () {
+                const yearInput = +this.value;
+                if (yearInput && !isNaN(yearInput)) {
+                    renderList(yearInput);
+                } else {
+                    renderList();
+                }
+            });
+
+        }).catch(err => {
+            console.error(err);
+            d3.select("#viz").html("Failed to load data.");
+        });
     }
 }
